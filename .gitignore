@@ -1,0 +1,17 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+
+# Ignore database (contains PII)
+database/attendance.db
+
+# Ignore datasets and captured faces
+dataset/
+trained_model/
+
+# IDE files
+.vscode/
+.idea/
