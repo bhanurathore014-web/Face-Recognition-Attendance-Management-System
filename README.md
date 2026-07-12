@@ -1,8 +1,6 @@
 # Face Recognition Attendance Management System
 
-An AI-powered desktop application built in Python that automates attendance tracking using real-time facial recognition. 
-
-Designed with a modern, glassmorphism-inspired dark UI using Tkinter, and powered by OpenCV and the `face_recognition` (dlib) library for high-accuracy face embeddings.
+An AI-powered desktop application built in Python that automates attendance tracking using real-time facial recognition. The system identifies registered students or employees through a webcam, records attendance automatically, prevents duplicate entries, and stores attendance records securely in a SQLite database.
 
 ## Features
 
