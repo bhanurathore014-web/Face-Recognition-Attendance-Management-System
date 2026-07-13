@@ -19,9 +19,14 @@ Dependencies:
 
 import sqlite3
 import os
+import sys
 import logging
 from datetime import datetime
 from typing import Optional
+
+# Make sure the project root is on sys.path when running this file directly
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.security import hash_password
 
 # ---------------------------------------------------------------------------
 # Logging setup — writes INFO+ to console; helps debug SQL errors
@@ -139,6 +144,20 @@ class DatabaseManager:
         );
         """
 
+        create_admins_sql = """
+        CREATE TABLE IF NOT EXISTS admins (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            username           TEXT    NOT NULL UNIQUE,
+            password_hash      TEXT    NOT NULL,
+            email              TEXT,
+            is_verified        INTEGER DEFAULT 0,
+            reset_token        TEXT,
+            reset_token_expiry TEXT,
+            failed_attempts    INTEGER DEFAULT 0,
+            locked_until       TEXT
+        );
+        """
+
         create_attendance_sql = """
         CREATE TABLE IF NOT EXISTS attendance (
             attendance_id  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -162,11 +181,52 @@ class DatabaseManager:
             cursor.execute(create_students_sql)
             cursor.execute(create_attendance_sql)
             cursor.execute(create_unique_idx_sql)
+            cursor.execute(create_admins_sql)
             self._connection.commit()
+            
+            # Seed default admin if table is empty
+            cursor.execute("SELECT COUNT(*) FROM admins;")
+            if cursor.fetchone()[0] == 0:
+                logger.info("Seeding default admin account...")
+                hashed_pw = hash_password("admin123")
+                cursor.execute(
+                    "INSERT INTO admins (username, password_hash) VALUES (?, ?);",
+                    ("admin", hashed_pw)
+                )
+                self._connection.commit()
+                
             logger.info("Database tables initialized.")
         except sqlite3.Error as e:
             logger.error("Table initialization failed: %s", e)
             raise
+
+    # =======================================================================
+    # ADMIN CRUD AND AUTH OPERATIONS
+    # =======================================================================
+
+    def get_admin_by_username(self, username: str) -> Optional[dict]:
+        """Fetch an admin by username."""
+        sql = "SELECT * FROM admins WHERE username = ?;"
+        try:
+            cursor = self._connection.cursor()
+            cursor.execute(sql, (username,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except sqlite3.Error as e:
+            logger.error("get_admin_by_username failed: %s", e)
+            return None
+
+    def update_admin_login_status(self, username: str, failed_attempts: int, locked_until: Optional[str] = None) -> bool:
+        """Update rate-limiting fields for an admin."""
+        sql = "UPDATE admins SET failed_attempts = ?, locked_until = ? WHERE username = ?;"
+        try:
+            cursor = self._connection.cursor()
+            cursor.execute(sql, (failed_attempts, locked_until, username))
+            self._connection.commit()
+            return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error("update_admin_login_status failed: %s", e)
+            return False
 
     # =======================================================================
     # STUDENT CRUD OPERATIONS

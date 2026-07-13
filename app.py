@@ -24,6 +24,11 @@ class FaceAttendApp:
         self.root = tk.Tk()
         # Start hidden, let the screens manage visibility and centering
         self.root.withdraw()
+
+        # Session expiry setup (5 minutes)
+        self.inactivity_timeout = 300000  # ms
+        self._timer_id = None
+        self._bind_activity_events()
         
         # Connect to DB
         self.db = DatabaseManager()
@@ -31,6 +36,24 @@ class FaceAttendApp:
 
         # Handle window close (X button) safely
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    def _bind_activity_events(self):
+        """Bind global events to reset the inactivity timer."""
+        self.root.bind_all("<Any-KeyPress>", self._reset_timer)
+        self.root.bind_all("<Any-ButtonPress>", self._reset_timer)
+        self.root.bind_all("<Motion>", self._reset_timer)
+        self._reset_timer()
+
+    def _reset_timer(self, event=None):
+        """Reset the inactivity timer."""
+        if self._timer_id:
+            self.root.after_cancel(self._timer_id)
+        self._timer_id = self.root.after(self.inactivity_timeout, self._handle_timeout)
+
+    def _handle_timeout(self):
+        """Log out the user due to inactivity."""
+        logging.info("Session expired due to inactivity. Logging out.")
+        self.show_login()
 
     def start(self):
         """Launch the application starting with the login screen."""

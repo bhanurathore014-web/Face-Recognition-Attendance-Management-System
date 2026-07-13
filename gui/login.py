@@ -25,9 +25,14 @@ import tkinter as tk
 from tkinter import ttk
 import sys
 import os
+from datetime import datetime, timedelta
 
 # Make sure the project root is on sys.path when running this file directly
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from database.database import DatabaseManager
+from utils.security import verify_password
+
 
 from utils.helper import (
     COLORS, FONTS,
@@ -35,11 +40,8 @@ from utils.helper import (
 )
 
 # ===========================================================================
-# Credentials (hardcoded — replace with DB lookup + bcrypt in production)
+# Admin Login Screen
 # ===========================================================================
-ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD = "admin123"
-
 
 class LoginWindow:
     """
@@ -256,9 +258,8 @@ class LoginWindow:
 
     # -----------------------------------------------------------------------
     # Authentication Logic
-    # -----------------------------------------------------------------------
     def _attempt_login(self) -> None:
-        """Validate credentials. On success call on_success_callback."""
+        """Validate credentials against DB and handle rate limiting."""
         username = self.username_var.get().strip()
         password = self.password_var.get()
 
@@ -269,14 +270,44 @@ class LoginWindow:
             self.error_var.set("⚠  Password is required.")
             return
 
-        if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
-            self.error_var.set("")
-            self.on_success()
-        else:
+        db = DatabaseManager()
+        admin = db.get_admin_by_username(username)
+
+        if not admin:
             self.error_var.set("⚠  Invalid username or password.")
             self.password_entry.delete(0, tk.END)
             self.password_entry.focus_set()
+            return
 
+        # Check rate limiting
+        if admin["locked_until"]:
+            locked_until = datetime.fromisoformat(admin["locked_until"])
+            if datetime.now() < locked_until:
+                remaining = (locked_until - datetime.now()).seconds // 60
+                self.error_var.set(f"⚠  Account locked. Try again in {remaining + 1}m.")
+                return
+            else:
+                # Lock expired, reset
+                db.update_admin_login_status(username, 0, None)
+                admin["failed_attempts"] = 0
+
+        # Verify password
+        if verify_password(password, admin["password_hash"]):
+            self.error_var.set("")
+            db.update_admin_login_status(username, 0, None)
+            self.on_success()
+        else:
+            attempts = admin["failed_attempts"] + 1
+            if attempts >= 5:
+                lock_time = datetime.now() + timedelta(minutes=15)
+                db.update_admin_login_status(username, attempts, lock_time.isoformat())
+                self.error_var.set("⚠  Account locked for 15 minutes.")
+            else:
+                db.update_admin_login_status(username, attempts, None)
+                self.error_var.set(f"⚠  Invalid password. Attempts left: {5 - attempts}")
+            
+            self.password_entry.delete(0, tk.END)
+            self.password_entry.focus_set()
 
 # ===========================================================================
 # Standalone test
