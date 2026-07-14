@@ -69,12 +69,12 @@ class FaceAttendApp:
             
         LoginWindow(self.root, on_success_callback=self.show_dashboard)
 
-    def show_dashboard(self):
+    def show_dashboard(self, admin_id: int):
         """Transition from login to main dashboard."""
         for widget in self.root.winfo_children():
             widget.destroy()
             
-        DashboardWindow(self.root, self.db, on_logout_callback=self.show_login)
+        DashboardWindow(self.root, self.db, admin_id=admin_id, on_logout_callback=self.show_login)
 
     def on_close(self):
         """Gracefully shutdown the app and database."""

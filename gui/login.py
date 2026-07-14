@@ -295,7 +295,7 @@ class LoginWindow:
         if verify_password(password, admin["password_hash"]):
             self.error_var.set("")
             db.update_admin_login_status(username, 0, None)
-            self.on_success()
+            self.on_success(admin["id"])
         else:
             attempts = admin["failed_attempts"] + 1
             if attempts >= 5:

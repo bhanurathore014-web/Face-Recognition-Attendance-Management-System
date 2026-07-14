@@ -25,9 +25,10 @@ from utils.camera import CameraManager
 from models.recognizer import FaceRecognizer
 
 class AttendanceFrame(tk.Frame):
-    def __init__(self, parent, db: DatabaseManager):
+    def __init__(self, parent, db: DatabaseManager, admin_id: int):
         super().__init__(parent, bg=COLORS["bg_dark"])
         self.db = db
+        self.admin_id = admin_id
         self.camera = CameraManager()
         self.recognizer = FaceRecognizer()
         
@@ -140,17 +141,17 @@ class AttendanceFrame(tk.Frame):
             
     def _load_cache(self) -> None:
         """Pre-load student details and today's marked list to RAM."""
-        students = self.db.get_all_students()
+        students = self.db.get_all_students(self.admin_id)
         self.student_cache = {s["id"]: {"name": s["name"], "roll": s["roll"]} for s in students}
         
         self.today_date = get_current_date()
-        attendance = self.db.get_attendance_by_date(self.today_date)
+        attendance = self.db.get_attendance_by_date(self.today_date, self.admin_id)
         self.marked_today = {a["student_id"] for a in attendance}
 
     def _load_todays_log(self) -> None:
         """Update the right-side listbox."""
         self.log_list.delete(0, tk.END)
-        attendance = self.db.get_attendance_by_date(self.today_date)
+        attendance = self.db.get_attendance_by_date(self.today_date, self.admin_id)
         
         for record in attendance:
             # e.g., "09:30 AM - Alice Smith (CS001)"
@@ -266,7 +267,7 @@ class AttendanceFrame(tk.Frame):
         
         # Insert into DB (database layer handles duplicate IGNORING inherently, 
         # but our memory cache prevents spamming DB)
-        success = self.db.insert_attendance(student_id, name, self.today_date, current_time)
+        success = self.db.insert_attendance(student_id, self.admin_id, name, self.today_date, current_time)
         
         if success:
             self.marked_today.add(student_id)

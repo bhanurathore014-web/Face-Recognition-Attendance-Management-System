@@ -30,9 +30,10 @@ class DatasetFrame(tk.Frame):
     """
     Dataset collection panel.
     """
-    def __init__(self, parent, db: DatabaseManager):
+    def __init__(self, parent, db: DatabaseManager, admin_id: int):
         super().__init__(parent, bg=COLORS["bg_dark"])
         self.db = db
+        self.admin_id = admin_id
         self.camera = CameraManager()
         
         # State variables
@@ -153,7 +154,7 @@ class DatasetFrame(tk.Frame):
     # -----------------------------------------------------------------------
     def refresh(self) -> None:
         """Called when switching to this tab. Reloads student list."""
-        students = self.db.get_all_students()
+        students = self.db.get_all_students(self.admin_id)
         self.student_map = {f"{s['roll']} - {s['name']}": s for s in students}
         
         values = list(self.student_map.keys())
@@ -291,7 +292,7 @@ class DatasetFrame(tk.Frame):
         self.student_combo.config(state="readonly")
         
         # Update DB encoding path to empty, since new data means we need retraining
-        self.db.update_student_paths(self.current_student_id, self.current_save_dir, "")
+        self.db.update_student_paths(self.current_student_id, self.admin_id, self.current_save_dir, "")
         
         show_info("Capture Complete", f"Successfully captured {TARGET_IMAGES} images!")
         self._on_student_selected() # Refresh UI state

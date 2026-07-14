@@ -195,6 +195,15 @@ class DatabaseManager:
                 )
                 self._connection.commit()
                 
+            # Add admin_id to students if it doesn't exist
+            try:
+                cursor.execute("ALTER TABLE students ADD COLUMN admin_id INTEGER REFERENCES admins(id) DEFAULT 1;")
+                self._connection.commit()
+                logger.info("Migrated students table to include admin_id.")
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
+                
             logger.info("Database tables initialized.")
         except sqlite3.Error as e:
             logger.error("Table initialization failed: %s", e)
@@ -234,6 +243,7 @@ class DatabaseManager:
 
     def insert_student(
         self,
+        admin_id: int,
         name: str,
         roll: str,
         department: str,
@@ -245,6 +255,7 @@ class DatabaseManager:
         Insert a new student record.
 
         Args:
+            admin_id:      FK to admins.id
             name:          Full name of the student.
             roll:          Unique roll/employee number.
             department:    Department or class name.
@@ -259,16 +270,16 @@ class DatabaseManager:
             sqlite3.IntegrityError: If roll number already exists.
         """
         sql = """
-        INSERT INTO students (name, roll, department, email, image_path, encoding_path, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?);
+        INSERT INTO students (admin_id, name, roll, department, email, image_path, encoding_path, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?);
         """
         created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         try:
             cursor = self._connection.cursor()
-            cursor.execute(sql, (name, roll, department, email, image_path, encoding_path, created_at))
+            cursor.execute(sql, (admin_id, name, roll, department, email, image_path, encoding_path, created_at))
             self._connection.commit()
             student_id = cursor.lastrowid
-            logger.info("Inserted student: %s (ID=%d)", name, student_id)
+            logger.info("Inserted student: %s (ID=%d) under admin_id=%d", name, student_id, admin_id)
             return student_id
         except sqlite3.IntegrityError as e:
             logger.warning("Duplicate roll number '%s': %s", roll, e)
@@ -277,49 +288,49 @@ class DatabaseManager:
             logger.error("insert_student failed: %s", e)
             raise
 
-    def get_all_students(self) -> list[dict]:
+    def get_all_students(self, admin_id: int) -> list[dict]:
         """
         Retrieve all student records ordered by name.
 
         Returns:
-            List of dicts with keys: id, name, roll, department, email,
+            List of dicts with keys: id, admin_id, name, roll, department, email,
             image_path, encoding_path, created_at.
         """
-        sql = "SELECT * FROM students ORDER BY name ASC;"
+        sql = "SELECT * FROM students WHERE admin_id = ? ORDER BY name ASC;"
         try:
             cursor = self._connection.cursor()
-            cursor.execute(sql)
+            cursor.execute(sql, (admin_id,))
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
         except sqlite3.Error as e:
             logger.error("get_all_students failed: %s", e)
             return []
 
-    def get_student_by_id(self, student_id: int) -> Optional[dict]:
+    def get_student_by_id(self, student_id: int, admin_id: int) -> Optional[dict]:
         """Fetch a single student by primary key."""
-        sql = "SELECT * FROM students WHERE id = ?;"
+        sql = "SELECT * FROM students WHERE id = ? AND admin_id = ?;"
         try:
             cursor = self._connection.cursor()
-            cursor.execute(sql, (student_id,))
+            cursor.execute(sql, (student_id, admin_id))
             row = cursor.fetchone()
             return dict(row) if row else None
         except sqlite3.Error as e:
             logger.error("get_student_by_id failed: %s", e)
             return None
 
-    def get_student_by_roll(self, roll: str) -> Optional[dict]:
+    def get_student_by_roll(self, roll: str, admin_id: int) -> Optional[dict]:
         """Fetch a single student by roll number."""
-        sql = "SELECT * FROM students WHERE roll = ?;"
+        sql = "SELECT * FROM students WHERE roll = ? AND admin_id = ?;"
         try:
             cursor = self._connection.cursor()
-            cursor.execute(sql, (roll,))
+            cursor.execute(sql, (roll, admin_id))
             row = cursor.fetchone()
             return dict(row) if row else None
         except sqlite3.Error as e:
             logger.error("get_student_by_roll failed: %s", e)
             return None
 
-    def search_students(self, keyword: str) -> list[dict]:
+    def search_students(self, keyword: str, admin_id: int) -> list[dict]:
         """
         Search students by name, roll, or department.
 
@@ -327,13 +338,13 @@ class DatabaseManager:
         """
         sql = """
         SELECT * FROM students
-        WHERE name LIKE ? OR roll LIKE ? OR department LIKE ?
+        WHERE admin_id = ? AND (name LIKE ? OR roll LIKE ? OR department LIKE ?)
         ORDER BY name ASC;
         """
         pattern = f"%{keyword}%"
         try:
             cursor = self._connection.cursor()
-            cursor.execute(sql, (pattern, pattern, pattern))
+            cursor.execute(sql, (admin_id, pattern, pattern, pattern))
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
         except sqlite3.Error as e:
@@ -343,6 +354,7 @@ class DatabaseManager:
     def update_student(
         self,
         student_id: int,
+        admin_id: int,
         name: str,
         roll: str,
         department: str,
@@ -354,11 +366,11 @@ class DatabaseManager:
         sql = """
         UPDATE students
         SET name=?, roll=?, department=?, email=?, image_path=?, encoding_path=?
-        WHERE id=?;
+        WHERE id=? AND admin_id=?;
         """
         try:
             cursor = self._connection.cursor()
-            cursor.execute(sql, (name, roll, department, email, image_path, encoding_path, student_id))
+            cursor.execute(sql, (name, roll, department, email, image_path, encoding_path, student_id, admin_id))
             self._connection.commit()
             logger.info("Updated student ID=%d", student_id)
             return cursor.rowcount > 0
@@ -366,15 +378,15 @@ class DatabaseManager:
             logger.error("update_student failed: %s", e)
             return False
 
-    def delete_student(self, student_id: int) -> bool:
+    def delete_student(self, student_id: int, admin_id: int) -> bool:
         """
         Delete a student and cascade-delete all their attendance records.
         Returns True on success.
         """
-        sql = "DELETE FROM students WHERE id = ?;"
+        sql = "DELETE FROM students WHERE id = ? AND admin_id = ?;"
         try:
             cursor = self._connection.cursor()
-            cursor.execute(sql, (student_id,))
+            cursor.execute(sql, (student_id, admin_id))
             self._connection.commit()
             logger.info("Deleted student ID=%d", student_id)
             return cursor.rowcount > 0
@@ -382,12 +394,12 @@ class DatabaseManager:
             logger.error("delete_student failed: %s", e)
             return False
 
-    def get_total_students(self) -> int:
+    def get_total_students(self, admin_id: int) -> int:
         """Return the total count of registered students."""
-        sql = "SELECT COUNT(*) FROM students;"
+        sql = "SELECT COUNT(*) FROM students WHERE admin_id = ?;"
         try:
             cursor = self._connection.cursor()
-            cursor.execute(sql)
+            cursor.execute(sql, (admin_id,))
             return cursor.fetchone()[0]
         except sqlite3.Error as e:
             logger.error("get_total_students failed: %s", e)
@@ -398,7 +410,7 @@ class DatabaseManager:
     # =======================================================================
 
     def insert_attendance(
-        self, student_id: int, name: str, date: str, time: str, status: str = "Present"
+        self, student_id: int, admin_id: int, name: str, date: str, time: str, status: str = "Present"
     ) -> bool:
         """
         Mark attendance for a student on a given date.
@@ -409,21 +421,23 @@ class DatabaseManager:
 
         Args:
             student_id: FK to students.id
+            admin_id:   The admin_id of the logged in user (IDOR prevention)
             name:       Student's name (denormalized for fast report queries)
             date:       "YYYY-MM-DD" format
             time:       "HH:MM:SS" format
             status:     "Present" (extensible to "Late", "Absent")
 
         Returns:
-            True if a new record was inserted, False if duplicate was skipped.
+            True if a new record was inserted, False if duplicate was skipped or ownership invalid.
         """
         sql = """
         INSERT OR IGNORE INTO attendance (student_id, name, date, time, status)
-        VALUES (?, ?, ?, ?, ?);
+        SELECT ?, ?, ?, ?, ?
+        WHERE EXISTS (SELECT 1 FROM students WHERE id = ? AND admin_id = ?);
         """
         try:
             cursor = self._connection.cursor()
-            cursor.execute(sql, (student_id, name, date, time, status))
+            cursor.execute(sql, (student_id, name, date, time, status, student_id, admin_id))
             self._connection.commit()
             inserted = cursor.rowcount > 0
             if inserted:
@@ -435,41 +449,42 @@ class DatabaseManager:
             logger.error("insert_attendance failed: %s", e)
             return False
 
-    def get_attendance_by_date(self, date: str) -> list[dict]:
+    def get_attendance_by_date(self, date: str, admin_id: int) -> list[dict]:
         """Fetch all attendance records for a given date (YYYY-MM-DD)."""
         sql = """
         SELECT a.*, s.roll, s.department
         FROM attendance a
         JOIN students s ON a.student_id = s.id
-        WHERE a.date = ?
+        WHERE a.date = ? AND s.admin_id = ?
         ORDER BY a.time ASC;
         """
         try:
             cursor = self._connection.cursor()
-            cursor.execute(sql, (date,))
+            cursor.execute(sql, (date, admin_id))
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
         except sqlite3.Error as e:
             logger.error("get_attendance_by_date failed: %s", e)
             return []
 
-    def get_attendance_by_student(self, student_id: int) -> list[dict]:
+    def get_attendance_by_student(self, student_id: int, admin_id: int) -> list[dict]:
         """Fetch all attendance records for a specific student."""
         sql = """
-        SELECT * FROM attendance
-        WHERE student_id = ?
-        ORDER BY date DESC, time DESC;
+        SELECT a.* FROM attendance a
+        JOIN students s ON a.student_id = s.id
+        WHERE a.student_id = ? AND s.admin_id = ?
+        ORDER BY a.date DESC, a.time DESC;
         """
         try:
             cursor = self._connection.cursor()
-            cursor.execute(sql, (student_id,))
+            cursor.execute(sql, (student_id, admin_id))
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
         except sqlite3.Error as e:
             logger.error("get_attendance_by_student failed: %s", e)
             return []
 
-    def get_attendance_by_month(self, year: int, month: int) -> list[dict]:
+    def get_attendance_by_month(self, year: int, month: int, admin_id: int) -> list[dict]:
         """
         Fetch all attendance for a given YYYY-MM month.
 
@@ -480,94 +495,103 @@ class DatabaseManager:
         SELECT a.*, s.roll, s.department
         FROM attendance a
         JOIN students s ON a.student_id = s.id
-        WHERE a.date LIKE ?
+        WHERE a.date LIKE ? AND s.admin_id = ?
         ORDER BY a.date ASC, a.time ASC;
         """
         try:
             cursor = self._connection.cursor()
-            cursor.execute(sql, (pattern,))
+            cursor.execute(sql, (pattern, admin_id))
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
         except sqlite3.Error as e:
             logger.error("get_attendance_by_month failed: %s", e)
             return []
 
-    def get_attendance_by_department(self, department: str) -> list[dict]:
+    def get_attendance_by_department(self, department: str, admin_id: int) -> list[dict]:
         """Fetch all attendance records filtered by department."""
         sql = """
         SELECT a.*, s.roll, s.department
         FROM attendance a
         JOIN students s ON a.student_id = s.id
-        WHERE s.department = ?
+        WHERE s.department = ? AND s.admin_id = ?
         ORDER BY a.date DESC;
         """
         try:
             cursor = self._connection.cursor()
-            cursor.execute(sql, (department,))
+            cursor.execute(sql, (department, admin_id))
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
         except sqlite3.Error as e:
             logger.error("get_attendance_by_department failed: %s", e)
             return []
 
-    def get_all_attendance(self) -> list[dict]:
+    def get_all_attendance(self, admin_id: int) -> list[dict]:
         """Fetch every attendance record (for full CSV export)."""
         sql = """
         SELECT a.*, s.roll, s.department
         FROM attendance a
         JOIN students s ON a.student_id = s.id
+        WHERE s.admin_id = ?
         ORDER BY a.date DESC, a.time DESC;
         """
         try:
             cursor = self._connection.cursor()
-            cursor.execute(sql)
+            cursor.execute(sql, (admin_id,))
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
         except sqlite3.Error as e:
             logger.error("get_all_attendance failed: %s", e)
             return []
 
-    def is_already_marked(self, student_id: int, date: str) -> bool:
+    def is_already_marked(self, student_id: int, admin_id: int, date: str) -> bool:
         """Return True if the student already has an attendance record for date."""
-        sql = "SELECT 1 FROM attendance WHERE student_id=? AND date=? LIMIT 1;"
+        sql = """
+        SELECT 1 FROM attendance a
+        JOIN students s ON a.student_id = s.id
+        WHERE a.student_id=? AND s.admin_id=? AND a.date=? LIMIT 1;
+        """
         try:
             cursor = self._connection.cursor()
-            cursor.execute(sql, (student_id, date))
+            cursor.execute(sql, (student_id, admin_id, date))
             return cursor.fetchone() is not None
         except sqlite3.Error as e:
             logger.error("is_already_marked failed: %s", e)
             return False
 
-    def get_today_count(self) -> int:
+    def get_today_count(self, admin_id: int) -> int:
         """Return total attendance records for today."""
         today = datetime.now().strftime("%Y-%m-%d")
-        sql = "SELECT COUNT(*) FROM attendance WHERE date = ?;"
+        sql = """
+        SELECT COUNT(*) FROM attendance a
+        JOIN students s ON a.student_id = s.id
+        WHERE a.date = ? AND s.admin_id = ?;
+        """
         try:
             cursor = self._connection.cursor()
-            cursor.execute(sql, (today,))
+            cursor.execute(sql, (today, admin_id))
             return cursor.fetchone()[0]
         except sqlite3.Error as e:
             logger.error("get_today_count failed: %s", e)
             return 0
 
-    def get_departments(self) -> list[str]:
+    def get_departments(self, admin_id: int) -> list[str]:
         """Return a sorted list of all unique department names."""
-        sql = "SELECT DISTINCT department FROM students ORDER BY department ASC;"
+        sql = "SELECT DISTINCT department FROM students WHERE admin_id = ? ORDER BY department ASC;"
         try:
             cursor = self._connection.cursor()
-            cursor.execute(sql)
+            cursor.execute(sql, (admin_id,))
             rows = cursor.fetchall()
             return [row[0] for row in rows]
         except sqlite3.Error as e:
             logger.error("get_departments failed: %s", e)
             return []
 
-    def update_student_paths(self, student_id: int, image_path: str, encoding_path: str) -> None:
+    def update_student_paths(self, student_id: int, admin_id: int, image_path: str, encoding_path: str) -> None:
         """Update image and encoding paths after dataset capture/training."""
-        sql = "UPDATE students SET image_path=?, encoding_path=? WHERE id=?;"
+        sql = "UPDATE students SET image_path=?, encoding_path=? WHERE id=? AND admin_id=?;"
         try:
             cursor = self._connection.cursor()
-            cursor.execute(sql, (image_path, encoding_path, student_id))
+            cursor.execute(sql, (image_path, encoding_path, student_id, admin_id))
             self._connection.commit()
         except sqlite3.Error as e:
             logger.error("update_student_paths failed: %s", e)
@@ -580,30 +604,30 @@ if __name__ == "__main__":
     print("=== DatabaseManager Self-Test ===")
     with DatabaseManager() as db:
         # Insert a test student
-        sid = db.insert_student("Alice Smith", "CS001", "Computer Science", "alice@example.com")
+        sid = db.insert_student(1, "Alice Smith", "CS001", "Computer Science", "alice@example.com")
         print(f"Inserted student ID: {sid}")
 
         # Retrieve
-        student = db.get_student_by_id(sid)
+        student = db.get_student_by_id(sid, 1)
         print(f"Fetched: {student}")
 
         # Search
-        results = db.search_students("alice")
+        results = db.search_students("alice", 1)
         print(f"Search results: {results}")
 
         # Mark attendance
         today = datetime.now().strftime("%Y-%m-%d")
         now_time = datetime.now().strftime("%H:%M:%S")
-        marked = db.insert_attendance(sid, "Alice Smith", today, now_time)
+        marked = db.insert_attendance(sid, 1, "Alice Smith", today, now_time)
         print(f"Attendance marked: {marked}")
 
         # Duplicate check
-        duplicate = db.insert_attendance(sid, "Alice Smith", today, now_time)
+        duplicate = db.insert_attendance(sid, 1, "Alice Smith", today, now_time)
         print(f"Duplicate blocked: {not duplicate}")
 
         # Today's count
-        print(f"Today's count: {db.get_today_count()}")
+        print(f"Today's count: {db.get_today_count(1)}")
 
         # Cleanup test data
-        db.delete_student(sid)
+        db.delete_student(sid, 1)
         print("Test student deleted. All tests passed ✓")

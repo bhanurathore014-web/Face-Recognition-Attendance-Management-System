@@ -22,9 +22,10 @@ from gui.attendance import AttendanceFrame
 from gui.reports import ReportsFrame
 
 class DashboardWindow:
-    def __init__(self, root: tk.Tk, db: DatabaseManager, on_logout_callback):
+    def __init__(self, root: tk.Tk, db: DatabaseManager, admin_id: int, on_logout_callback):
         self.root = root
         self.db = db
+        self.admin_id = admin_id
         self.on_logout = on_logout_callback
         
         self.frames = {}
@@ -106,25 +107,25 @@ class DashboardWindow:
         """Initialize all functional frames and store them."""
         # We wrap each frame creation in a try-except to allow partial implementation
         try:
-            self.frames["register"] = RegisterFrame(self.content_area, self.db)
+            self.frames["register"] = RegisterFrame(self.content_area, self.db, self.admin_id)
             self.frames["register"].place(x=0, y=0, relwidth=1, relheight=1)
         except Exception as e:
             print(f"Error loading RegisterFrame: {e}")
             
         try:
-            self.frames["dataset"] = DatasetFrame(self.content_area, self.db)
+            self.frames["dataset"] = DatasetFrame(self.content_area, self.db, self.admin_id)
             self.frames["dataset"].place_forget()
         except Exception as e:
             print(f"Error loading DatasetFrame: {e}")
             
         try:
-            self.frames["attendance"] = AttendanceFrame(self.content_area, self.db)
+            self.frames["attendance"] = AttendanceFrame(self.content_area, self.db, self.admin_id)
             self.frames["attendance"].place_forget()
         except Exception as e:
             print(f"Error loading AttendanceFrame: {e}")
             
         try:
-            self.frames["reports"] = ReportsFrame(self.content_area, self.db)
+            self.frames["reports"] = ReportsFrame(self.content_area, self.db, self.admin_id)
             self.frames["reports"].place_forget()
         except Exception as e:
             print(f"Error loading ReportsFrame: {e}")
@@ -182,6 +183,6 @@ if __name__ == "__main__":
     root = tk.Tk()
     db = DatabaseManager()
     db.connect()
-    app = DashboardWindow(root, db, root.destroy)
+    app = DashboardWindow(root, db, 1, root.destroy)
     root.mainloop()
     db.close()

@@ -53,9 +53,10 @@ class RegisterFrame(tk.Frame):
         frame.pack(fill=tk.BOTH, expand=True)
     """
 
-    def __init__(self, parent, db: DatabaseManager):
+    def __init__(self, parent, db: DatabaseManager, admin_id: int):
         super().__init__(parent, bg=COLORS["bg_dark"])
         self.db = db
+        self.admin_id = admin_id
         self._build_ui()
         self._load_student_list()
 
@@ -297,9 +298,9 @@ class RegisterFrame(tk.Frame):
             self.tree.delete(row)
 
         if keyword:
-            students = self.db.search_students(keyword)
+            students = self.db.search_students(keyword, self.admin_id)
         else:
-            students = self.db.get_all_students()
+            students = self.db.get_all_students(self.admin_id)
 
         for i, s in enumerate(students):
             from utils.helper import get_image_count
@@ -311,7 +312,7 @@ class RegisterFrame(tk.Frame):
             ), tags=(tag,))
 
         self.tree.tag_configure("odd", background=COLORS["bg_table_alt"])
-        total = self.db.get_total_students()
+        total = self.db.get_total_students(self.admin_id)
         self.status_var.set(f"Showing {len(students)} of {total} students")
 
     def _on_search(self) -> None:
@@ -334,20 +335,20 @@ class RegisterFrame(tk.Frame):
             return
 
         # --- Duplicate check ---
-        if self.db.get_student_by_roll(roll):
+        if self.db.get_student_by_roll(roll, self.admin_id):
             self.error_var.set(f"⚠  Roll number '{roll}' is already registered.")
             return
 
         # --- Insert ---
         try:
-            student_id = self.db.insert_student(name, roll, dept, email)
+            student_id = self.db.insert_student(self.admin_id, name, roll, dept, email)
         except Exception as e:
             self.error_var.set(f"⚠  Database error: {e}")
             return
 
         # --- Create dataset folder ---
         folder = get_student_dataset_path(student_id)
-        self.db.update_student_paths(student_id, folder, "")
+        self.db.update_student_paths(student_id, self.admin_id, folder, "")
 
         self.error_var.set("")
         self._clear_form()
@@ -393,7 +394,7 @@ class RegisterFrame(tk.Frame):
         if os.path.isdir(folder):
             shutil.rmtree(folder)
 
-        self.db.delete_student(student_id)
+        self.db.delete_student(student_id, self.admin_id)
         self._load_student_list()
         show_info("Deleted", f"'{name}' has been removed.")
 
@@ -421,7 +422,7 @@ if __name__ == "__main__":
     db = DatabaseManager()
     db.connect()
 
-    frame = RegisterFrame(root, db)
+    frame = RegisterFrame(root, db, 1)
     frame.pack(fill=tk.BOTH, expand=True)
     root.mainloop()
     db.close()

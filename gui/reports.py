@@ -22,9 +22,10 @@ from database.database import DatabaseManager
 from utils.csv_export import export_attendance_to_csv
 
 class ReportsFrame(tk.Frame):
-    def __init__(self, parent, db: DatabaseManager):
+    def __init__(self, parent, db: DatabaseManager, admin_id: int):
         super().__init__(parent, bg=COLORS["bg_dark"])
         self.db = db
+        self.admin_id = admin_id
         
         self.current_data = []
         
@@ -133,7 +134,7 @@ class ReportsFrame(tk.Frame):
     def refresh(self) -> None:
         """Called when tab is opened."""
         # Update departments dropdown
-        depts = self.db.get_departments()
+        depts = self.db.get_departments(self.admin_id)
         self.dept_combo.config(values=["All"] + depts)
         self._apply_filter()
 
@@ -143,14 +144,14 @@ class ReportsFrame(tk.Frame):
         
         if date_filter and dept_filter != "All":
             # Filter by both (we have to do this in python since DB manager doesn't have a specific query)
-            all_dept = self.db.get_attendance_by_department(dept_filter)
+            all_dept = self.db.get_attendance_by_department(dept_filter, self.admin_id)
             self.current_data = [d for d in all_dept if d["date"] == date_filter]
         elif date_filter:
-            self.current_data = self.db.get_attendance_by_date(date_filter)
+            self.current_data = self.db.get_attendance_by_date(date_filter, self.admin_id)
         elif dept_filter != "All":
-            self.current_data = self.db.get_attendance_by_department(dept_filter)
+            self.current_data = self.db.get_attendance_by_department(dept_filter, self.admin_id)
         else:
-            self.current_data = self.db.get_all_attendance()
+            self.current_data = self.db.get_all_attendance(self.admin_id)
             
         self._populate_table()
 
