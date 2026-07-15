@@ -22,6 +22,9 @@ Pillow==10.3.0
 # Plotting (optional charts in reports)
 matplotlib==3.9.0
 
+# Environment variables
+python-dotenv==1.0.1
+
 # ============================================================
 # INSTALL NOTES
 # ============================================================

@@ -26,6 +26,9 @@ from tkinter import ttk
 import sys
 import os
 from datetime import datetime, timedelta
+import logging
+
+security_logger = logging.getLogger('security')
 
 # Make sure the project root is on sys.path when running this file directly
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -274,6 +277,7 @@ class LoginWindow:
         admin = db.get_admin_by_username(username)
 
         if not admin:
+            security_logger.warning(f"Failed login attempt for unknown user: '{username}'")
             self.error_var.set("⚠  Invalid username or password.")
             self.password_entry.delete(0, tk.END)
             self.password_entry.focus_set()
@@ -284,6 +288,7 @@ class LoginWindow:
             locked_until = datetime.fromisoformat(admin["locked_until"])
             if datetime.now() < locked_until:
                 remaining = (locked_until - datetime.now()).seconds // 60
+                security_logger.warning(f"Blocked login attempt for locked account: '{username}'")
                 self.error_var.set(f"⚠  Account locked. Try again in {remaining + 1}m.")
                 return
             else:
@@ -295,15 +300,18 @@ class LoginWindow:
         if verify_password(password, admin["password_hash"]):
             self.error_var.set("")
             db.update_admin_login_status(username, 0, None)
+            security_logger.warning(f"Successful login for user: '{username}'")
             self.on_success(admin["id"])
         else:
             attempts = admin["failed_attempts"] + 1
             if attempts >= 5:
                 lock_time = datetime.now() + timedelta(minutes=15)
                 db.update_admin_login_status(username, attempts, lock_time.isoformat())
+                security_logger.warning(f"Account locked due to multiple failed attempts: '{username}'")
                 self.error_var.set("⚠  Account locked for 15 minutes.")
             else:
                 db.update_admin_login_status(username, attempts, None)
+                security_logger.warning(f"Failed login attempt for user: '{username}' (Attempt {attempts}/5)")
                 self.error_var.set(f"⚠  Invalid password. Attempts left: {5 - attempts}")
             
             self.password_entry.delete(0, tk.END)

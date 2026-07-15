@@ -16,8 +16,21 @@ from database.database import DatabaseManager
 from gui.login import LoginWindow
 from gui.dashboard import DashboardWindow
 
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
 # Basic logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+# Security Logging (dedicated file)
+security_logger = logging.getLogger('security')
+security_logger.setLevel(logging.WARNING)
+sec_handler = logging.FileHandler(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'security.log'))
+sec_handler.setFormatter(logging.Formatter("%(asctime)s [SECURITY] %(message)s"))
+security_logger.addHandler(sec_handler)
 
 class FaceAttendApp:
     def __init__(self):
