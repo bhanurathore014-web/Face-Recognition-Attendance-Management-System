@@ -1,10 +1,15 @@
 import os
 import stat
 import sys
+import shutil
 
 def restrict_file_permissions(filepath):
     if not os.path.exists(filepath):
         print(f"File not found: {filepath}")
+        return False
+        
+    if os.path.islink(filepath):
+        print(f"Error: {filepath} is a symbolic link. Cowardly refusing to change permissions.")
         return False
         
     try:
@@ -31,14 +36,25 @@ def main():
         print("Database not found, creating an empty file to secure it.")
         open(db_path, 'a').close()
         
-    restrict_file_permissions(db_path)
+    if not restrict_file_permissions(db_path):
+        print("Fatal: Failed to secure database. Aborting.")
+        sys.exit(1)
     
     # 2. Check for .env file
     env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+    example_env = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env.example')
+    
     if not os.path.exists(env_path):
-        print("Warning: .env file not found. Please copy .env.example to .env to securely configure the application.")
-    else:
-        restrict_file_permissions(env_path)
+        if os.path.exists(example_env):
+            print(".env not found. Copying .env.example to .env...")
+            shutil.copy(example_env, env_path)
+        else:
+            print("Warning: .env and .env.example not found.")
+            sys.exit(1)
+            
+    if not restrict_file_permissions(env_path):
+        print("Fatal: Failed to secure .env file. Aborting.")
+        sys.exit(1)
         
     print("=== Initialization Complete ===")
 
