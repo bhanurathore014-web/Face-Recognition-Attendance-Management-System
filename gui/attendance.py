@@ -15,6 +15,7 @@ import tkinter as tk
 from tkinter import ttk
 import sys
 import os
+import time
 from PIL import Image, ImageTk
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -35,6 +36,9 @@ class AttendanceFrame(tk.Frame):
         self.is_running = False
         self.video_loop_id = None
         self.today_date = get_current_date()
+        
+        self.last_inference_time = 0.0
+        self.last_results = []
         
         # We cache student details to avoid hitting the DB every frame
         # Dict: student_id -> {"name": str, "roll": str}
@@ -214,12 +218,15 @@ class AttendanceFrame(tk.Frame):
         if ret and frame is not None:
             import cv2
             
-            # 1. Recognize faces
-            # downscale_factor=0.25 speeds up face_recognition significantly
-            results = self.recognizer.recognize(frame, downscale_factor=0.25)
+            # 1. Recognize faces (Throttled to ~2 FPS to prevent CPU abuse)
+            current_time = time.time()
+            if current_time - self.last_inference_time >= 0.5:
+                # downscale_factor=0.25 speeds up face_recognition significantly
+                self.last_results = self.recognizer.recognize(frame, downscale_factor=0.25)
+                self.last_inference_time = current_time
             
             # 2. Draw results and handle attendance
-            for student_id, (top, right, bottom, left) in results:
+            for student_id, (top, right, bottom, left) in self.last_results:
                 
                 if student_id is not None and student_id in self.student_cache:
                     # Known Person

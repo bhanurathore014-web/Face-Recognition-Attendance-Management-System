@@ -14,6 +14,7 @@ import tkinter as tk
 from tkinter import ttk
 import sys
 import os
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -28,6 +29,7 @@ class ReportsFrame(tk.Frame):
         self.admin_id = admin_id
         
         self.current_data = []
+        self.last_export_time = 0.0
         
         self._build_ui()
         self.refresh()
@@ -170,12 +172,18 @@ class ReportsFrame(tk.Frame):
         self.stats_var.set(f"Total Records: {len(self.current_data)}")
 
     def _export_csv(self) -> None:
+        current_time = time.time()
+        if current_time - self.last_export_time < 5.0:
+            show_error("Rate Limit", "Please wait 5 seconds between exports.")
+            return
+
         if not self.current_data:
             show_error("Export Error", "No data to export.")
             return
             
         success, result = export_attendance_to_csv(self.current_data, REPORTS_DIR)
         if success:
+            self.last_export_time = time.time()
             show_info("Export Successful", f"CSV file saved to:\n{result}")
         else:
             show_error("Export Failed", result)

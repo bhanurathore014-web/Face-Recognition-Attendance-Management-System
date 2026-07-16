@@ -24,6 +24,7 @@ from tkinter import ttk
 import sys
 import os
 import shutil
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -57,6 +58,7 @@ class RegisterFrame(tk.Frame):
         super().__init__(parent, bg=COLORS["bg_dark"])
         self.db = db
         self.admin_id = admin_id
+        self.last_register_time = 0.0
         self._build_ui()
         self._load_student_list()
 
@@ -328,6 +330,12 @@ class RegisterFrame(tk.Frame):
         dept  = self.dept_var.get().strip()
         email = self.email_var.get().strip()
 
+        # --- Rate Limiting (Debounce) ---
+        current_time = time.time()
+        if current_time - self.last_register_time < 3.0:
+            self.error_var.set("⚠  Please wait 3 seconds before registering again.")
+            return
+
         # --- Validate ---
         ok, msg = validate_all_student_fields(name, roll, dept, email)
         if not ok:
@@ -350,6 +358,8 @@ class RegisterFrame(tk.Frame):
         folder = get_student_dataset_path(student_id)
         self.db.update_student_paths(student_id, self.admin_id, folder, "")
 
+        self.last_register_time = time.time()
+        
         self.error_var.set("")
         self._clear_form()
         self._load_student_list()
