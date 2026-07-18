@@ -188,7 +188,8 @@ class DatabaseManager:
             cursor.execute("SELECT COUNT(*) FROM admins;")
             if cursor.fetchone()[0] == 0:
                 logger.info("Seeding default admin account...")
-                hashed_pw = hash_password("admin123")
+                default_password = os.getenv("DEFAULT_ADMIN_PASSWORD", "fallback_admin_password")
+                hashed_pw = hash_password(default_password)
                 cursor.execute(
                     "INSERT INTO admins (username, password_hash) VALUES (?, ?);",
                     ("admin", hashed_pw)

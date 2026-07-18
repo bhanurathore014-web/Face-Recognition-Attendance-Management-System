@@ -5,7 +5,7 @@ Admin Login Screen — the entry point of the application GUI.
 
 Design:
     Dark glassmorphism-inspired card centered on a gradient background.
-    Username: "admin"   Password: "admin123"  (hardcoded for Phase 5,
+    Username: "admin"   Password: check .env for DEFAULT_ADMIN_PASSWORD  (hardcoded for Phase 5,
     will be moved to hashed DB record in Phase 14).
 
 Tkinter Concepts Used:
